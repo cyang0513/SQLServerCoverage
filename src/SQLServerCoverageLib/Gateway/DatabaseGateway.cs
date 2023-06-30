@@ -1,140 +1,139 @@
-﻿using System;
+﻿using Microsoft.Data.SqlClient;
+using System;
 using System.Data;
-using System.Data.Common;
-using System.Data.SqlClient;
 using System.Xml;
 
 namespace SQLServerCoverage.Gateway
 {
-    public class DatabaseGateway
-    {
-        private readonly string _connectionString;
-        private readonly string _databaseName;
-        private readonly SqlConnectionStringBuilder _connectionStringBuilder;
-        public string DataSource { get { return _connectionStringBuilder.DataSource; } }
+   public class DatabaseGateway
+   {
+      private readonly string _connectionString;
+      private readonly string _databaseName;
+      private readonly SqlConnectionStringBuilder _connectionStringBuilder;
+      public string DataSource { get { return _connectionStringBuilder.DataSource; } }
 
-        public int TimeOut { get; set; }
+      public int TimeOut { get; set; }
 
-        public DatabaseGateway()
-        {
-            //for mocking.
-        }
-        public DatabaseGateway(string connectionString, string databaseName)
-        {
-            TimeOut = 60;
-            _connectionString = connectionString;
-            _databaseName = databaseName;
-            _connectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
-        }
+      public DatabaseGateway()
+      {
+         //for mocking.
+      }
+      public DatabaseGateway(string connectionString, string databaseName)
+      {
+         TimeOut = 60;
+         _connectionString = connectionString;
+         _databaseName = databaseName;
+         _connectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
+      }
 
-        public virtual string GetString(string query)
-        {
-            using (var conn = new SqlConnection(_connectionString))
+      public virtual string GetString(string query)
+      {
+         using (var conn = new SqlConnection(_connectionString))
+         {
+            conn.Open();
+            if (!string.IsNullOrEmpty(_databaseName))
+               conn.ChangeDatabase(_databaseName);
+            using (var cmd = conn.CreateCommand())
             {
-                conn.Open();
-                if (!string.IsNullOrEmpty(_databaseName))
-                    conn.ChangeDatabase(_databaseName);
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = query;
-                    cmd.CommandTimeout = TimeOut;
+               cmd.CommandText = query;
+               cmd.CommandTimeout = TimeOut;
 
-                    var scalarResult = cmd.ExecuteScalar();
+               var scalarResult = cmd.ExecuteScalar();
 
-                    if (scalarResult != null) return scalarResult.ToString();
+               if (scalarResult != null) return scalarResult.ToString();
 
-                    return null;
-                }
+               return null;
             }
-        }
+         }
+      }
 
-        public virtual DataTable GetRecords(string query)
-        {
-            using (var conn = new SqlConnection(_connectionString))
+      public virtual DataTable GetRecords(string query)
+      {
+         using (var conn = new SqlConnection(_connectionString))
+         {
+            conn.Open();
+            conn.ChangeDatabase(_databaseName);
+            using (var cmd = conn.CreateCommand())
             {
-                conn.Open();
-                conn.ChangeDatabase(_databaseName);
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = query;
-                    cmd.CommandTimeout = TimeOut;
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        var ds = new DataTable();
-                        ds.Load(reader);
-                        return ds;
-                    }
-                }
+               cmd.CommandText = query;
+               cmd.CommandTimeout = TimeOut;
+               using (var reader = cmd.ExecuteReader())
+               {
+                  var ds = new DataTable();
+                  ds.Load(reader);
+                  return ds;
+               }
             }
-        }
+         }
+      }
 
-        public virtual DataTable GetTraceRecords(string query)
-        {
-            using (var conn = new SqlConnection(_connectionString))
+      public virtual DataTable GetTraceRecords(string query)
+      {
+         using (var conn = new SqlConnection(_connectionString))
+         {
+            conn.Open();
+            conn.ChangeDatabase(_databaseName);
+            using (var cmd = conn.CreateCommand())
             {
-                conn.Open();
-                conn.ChangeDatabase(_databaseName);
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandTimeout = TimeOut;
-                    cmd.CommandText = query;
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        var ds = new DataTable();
-                        ds.Columns.Add(new DataColumn("xml"));
-                        while (reader.Read())
-                        {
-                            XmlDocument xml = new XmlDocument();
-                            xml.LoadXml(reader[0].ToString());
+               cmd.CommandTimeout = TimeOut;
+               cmd.CommandText = query;
+               using (var reader = cmd.ExecuteReader())
+               {
+                  var ds = new DataTable();
+                  ds.Columns.Add(new DataColumn("xml"));
+                  while (reader.Read())
+                  {
+                     XmlDocument xml = new XmlDocument();
+                     xml.LoadXml(reader[0].ToString());
 
-                            var root = xml.SelectNodes("/event").Item(0);
+                     var root = xml.SelectNodes("/event").Item(0);
 
-                            var objectId = xml.SelectNodes("/event/data[@name='object_id']").Item(0);
-                            var offset = xml.SelectNodes("/event/data[@name='offset']").Item(0);
-                            var offsetEnd = xml.SelectNodes("/event/data[@name='offset_end']").Item(0);
+                     var objectId = xml.SelectNodes("/event/data[@name='object_id']").Item(0);
+                     var offset = xml.SelectNodes("/event/data[@name='offset']").Item(0);
+                     var offsetEnd = xml.SelectNodes("/event/data[@name='offset_end']").Item(0);
 
-                            root.RemoveAll();
+                     root.RemoveAll();
 
-                            root.AppendChild(objectId);
-                            root.AppendChild(offset);
-                            root.AppendChild(offsetEnd);
+                     root.AppendChild(objectId);
+                     root.AppendChild(offset);
+                     root.AppendChild(offsetEnd);
 
-                            var row = ds.NewRow();
-                            row["xml"] = root.OuterXml;
-                            ds.Rows.Add(row);
+                     var row = ds.NewRow();
+                     row["xml"] = root.OuterXml;
+                     ds.Rows.Add(row);
 
-                        }
+                  }
 
-                        return ds;
-                    }
-                }
+                  return ds;
+               }
             }
-        }
+         }
+      }
 
-        public void Execute(string command, int timeOut, bool isQuery = false)
-        {
-            using (var conn = new SqlConnection(_connectionString))
+      public void Execute(string command, int timeOut, bool isQuery = false)
+      {
+         using (var conn = new SqlConnection(_connectionString))
+         {
+            conn.Open();
+            conn.ChangeDatabase(_databaseName);
+            if (isQuery)
+               conn.InfoMessage += new SqlInfoMessageEventHandler(printSQLExecutionMessage);
+            using (var cmd = conn.CreateCommand())
             {
-                conn.Open();
-                conn.ChangeDatabase(_databaseName);
-                if (isQuery)
-                    conn.InfoMessage += new SqlInfoMessageEventHandler(printSQLExecutionMessage);
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = command;
-                    cmd.CommandTimeout = timeOut;
-                    cmd.ExecuteNonQuery();
-                }
-                conn.Close();
-                conn.Dispose();
+               cmd.CommandText = command;
+               cmd.CommandTimeout = timeOut;
+               cmd.ExecuteNonQuery();
             }
-        }
+            conn.Close();
+            conn.Dispose();
+         }
+      }
 
-        void printSQLExecutionMessage(object sender, SqlInfoMessageEventArgs e)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(e.Message);
-            Console.ResetColor();
-        }
-    }
+      void printSQLExecutionMessage(object sender, SqlInfoMessageEventArgs e)
+      {
+         Console.ForegroundColor = ConsoleColor.Green;
+         Console.WriteLine(e.Message);
+         Console.ResetColor();
+      }
+   }
 }
