@@ -1,3 +1,4 @@
+-- Demo
 IF NOT EXISTS (
 		SELECT *
 		FROM sys.databases
